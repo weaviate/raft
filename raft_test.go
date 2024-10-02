@@ -2066,7 +2066,6 @@ func TestRaft_AppendEntry(t *testing.T) {
 // Once the cluster is created, we force an election by partioning the leader
 // and verify that the cluster regain stability.
 func TestRaft_PreVoteMixedCluster(t *testing.T) {
-
 	tcs := []struct {
 		name         string
 		prevoteNum   int
@@ -2081,7 +2080,6 @@ func TestRaft_PreVoteMixedCluster(t *testing.T) {
 	}
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
-
 			// Make majority cluster.
 			majority := tc.prevoteNum
 			minority := tc.noprevoteNum
@@ -2120,7 +2118,6 @@ func TestRaft_PreVoteMixedCluster(t *testing.T) {
 			require.NotEqual(t, leader.leaderID, leaderOld.leaderID)
 		})
 	}
-
 }
 
 func TestRaft_PreVoteAvoidElectionWithPartition(t *testing.T) {
@@ -2134,7 +2131,7 @@ func TestRaft_PreVoteAvoidElectionWithPartition(t *testing.T) {
 	followers := c.Followers()
 	require.Len(t, followers, 4)
 
-	//Partition a node and wait enough for it to increase its term
+	// Partition a node and wait enough for it to increase its term
 	c.Partition([]ServerAddress{followers[0].localAddr})
 	time.Sleep(10 * c.propagateTimeout)
 
@@ -2151,7 +2148,6 @@ func TestRaft_PreVoteAvoidElectionWithPartition(t *testing.T) {
 	require.Len(t, c.Followers(), 4)
 	leaderTerm = c.Leader().getCurrentTerm()
 	require.Equal(t, leaderTerm, oldLeaderTerm)
-
 }
 
 func TestRaft_VotingGrant_WhenLeaderAvailable(t *testing.T) {
@@ -2198,6 +2194,116 @@ func TestRaft_VotingGrant_WhenLeaderAvailable(t *testing.T) {
 	}
 	if !resp.Granted {
 		t.Fatalf("expected vote to be granted, but wasn't %+v", resp)
+	}
+}
+
+func TestRaft_LabelFiltering(t *testing.T) {
+	tests := []struct {
+		Name                   string
+		ReceiverLabel          string
+		ReceiverSkipLabelCheck bool
+		SenderLabel            string
+		ExpectFailure          bool
+	}{
+		{
+			Name:                   "Receiver skip label check, labeled receiver, incorrectly labeled sender",
+			ReceiverLabel:          "cluster-0",
+			ReceiverSkipLabelCheck: true,
+			SenderLabel:            "cluster-1",
+			ExpectFailure:          false,
+		},
+		{
+			Name:                   "Receiver skip label check, labeled receiver, correctly labeled sender",
+			ReceiverLabel:          "cluster-0",
+			ReceiverSkipLabelCheck: true,
+			SenderLabel:            "cluster-0",
+			ExpectFailure:          false,
+		},
+		{
+			Name:                   "Receiver skip label check, unlabeled receiver, labeled sender",
+			ReceiverLabel:          "",
+			ReceiverSkipLabelCheck: true,
+			SenderLabel:            "cluster-1",
+			ExpectFailure:          false,
+		},
+		{
+			Name:                   "Receiver skip label check, unlabeled receiver, unlabeled sender",
+			ReceiverLabel:          "",
+			ReceiverSkipLabelCheck: true,
+			SenderLabel:            "",
+			ExpectFailure:          false,
+		},
+		{
+			Name:                   "Receiver do label check, unlabeled receiver, unlabeled sender",
+			ReceiverLabel:          "",
+			ReceiverSkipLabelCheck: false,
+			SenderLabel:            "",
+			ExpectFailure:          false,
+		},
+		{
+			Name:                   "Receiver do label check, labeled receiver, unlabeled sender",
+			ReceiverLabel:          "cluster-0",
+			ReceiverSkipLabelCheck: false,
+			SenderLabel:            "",
+			ExpectFailure:          true,
+		},
+		{
+			Name:                   "Receiver do label check, unlabeled receiver, labeled sender",
+			ReceiverLabel:          "",
+			ReceiverSkipLabelCheck: false,
+			SenderLabel:            "cluster-0",
+			ExpectFailure:          true,
+		},
+		{
+			Name:                   "Receiver do label check, labeled receiver, incorreclty labeled sender",
+			ReceiverLabel:          "cluster-0",
+			ReceiverSkipLabelCheck: false,
+			SenderLabel:            "cluster-1",
+			ExpectFailure:          true,
+		},
+		{
+			Name:                   "Receiver do label check, labeled receiver, correclty labeled sender",
+			ReceiverLabel:          "cluster-0",
+			ReceiverSkipLabelCheck: false,
+			SenderLabel:            "cluster-0",
+			ExpectFailure:          false,
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.Name, func(t *testing.T) {
+			config := inmemConfig(t)
+			config.Label = test.ReceiverLabel
+			config.SkipLabelCheck = test.ReceiverSkipLabelCheck
+
+			c := MakeCluster(3, t, config)
+			defer c.Close()
+			followers := c.Followers()
+			ldr := c.Leader()
+			ldrT := c.trans[c.IndexOf(ldr)]
+
+			reqVote := RequestVoteRequest{
+				RPCHeader: RPCHeader{
+					ProtocolVersion: ProtocolVersionMax,
+					Addr:            ldrT.EncodePeer(ldr.localID, ldr.localAddr),
+					Label:           test.SenderLabel,
+				},
+				Term:         ldr.getCurrentTerm() + 10,
+				LastLogIndex: ldr.LastIndex(),
+				LastLogTerm:  ldr.getCurrentTerm(),
+			}
+			var resp RequestVoteResponse
+			err := ldrT.RequestVote(followers[0].localID, followers[0].localAddr, &reqVote, &resp)
+			if test.ExpectFailure {
+				if err == nil || !strings.Contains(err.Error(), "RPC has wrong label") {
+					t.Fatalf("unexpected RPC did not get rejected: %v", err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("unexpected RPC got rejected rejected: %v", err)
+				}
+			}
+		})
 	}
 }
 
