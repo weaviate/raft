@@ -5,11 +5,11 @@ package raft_compat
 
 import (
 	"fmt"
-	"github.com/hashicorp/raft"
 	raftprevious "github.com/hashicorp/raft-previous-version"
 	"github.com/hashicorp/raft/compat/testcluster"
 	"github.com/hashicorp/raft/compat/utils"
 	"github.com/stretchr/testify/require"
+	"github.com/weaviate/raft"
 	"testing"
 	"time"
 )

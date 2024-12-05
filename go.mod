@@ -1,4 +1,4 @@
-module github.com/hashicorp/raft
+module github.com/weaviate/raft
 
 go 1.20
 

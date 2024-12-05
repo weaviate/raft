@@ -5,10 +5,10 @@ package utils
 
 import (
 	"fmt"
-	"github.com/hashicorp/raft"
 	raftprevious "github.com/hashicorp/raft-previous-version"
 	"github.com/hashicorp/raft/compat/testcluster"
 	"github.com/stretchr/testify/require"
+	"github.com/weaviate/raft"
 	"testing"
 	"time"
 )
