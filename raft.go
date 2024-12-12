@@ -37,6 +37,7 @@ func (r *Raft) getRPCHeader() RPCHeader {
 		ProtocolVersion: r.config().ProtocolVersion,
 		ID:              []byte(r.config().LocalID),
 		Addr:            r.trans.EncodePeer(r.config().LocalID, r.localAddr),
+		Label:           r.config().Label,
 	}
 }
 
@@ -65,6 +66,12 @@ func (r *Raft) checkRPCHeader(rpc RPC) error {
 	// changes evolve.
 	if header.ProtocolVersion < r.config().ProtocolVersion-1 {
 		return ErrUnsupportedProtocol
+	}
+
+	if !r.config().SkipLabelCheck {
+		if header.Label != r.config().Label {
+			return fmt.Errorf("RPC has wrong label: got: %s expected %s", header.Label, r.config().Label)
+		}
 	}
 
 	return nil
@@ -2048,7 +2055,6 @@ func (r *Raft) electSelf() <-chan *voteResult {
 // vote for ourself).
 // This must only be called from the main thread.
 func (r *Raft) preElectSelf() <-chan *preVoteResult {
-
 	// At this point transport should support pre-vote
 	// but check just in case
 	prevoteTrans, prevoteTransSupported := r.trans.(WithPreVote)
@@ -2097,7 +2103,6 @@ func (r *Raft) preElectSelf() <-chan *preVoteResult {
 				resp.Granted = false
 			}
 			respCh <- resp
-
 		})
 	}
 
